@@ -20,18 +20,20 @@ class Marketplace:
         :type queue_size_per_producer: Int
         :param queue_size_per_producer: the maximum size of a queue associated with each producer
         """
+		# TODO change these types
         self.queue_size_per_producer = queue_size_per_producer
-        self.sizes_per_producer = []  # How many items a producer has in the queue
+        self.id_producer = 0
+        self.sizes_per_producer = list()  # How many items a producer has in the queue
 
         self.carts = {}  # Cart ID (Int) --> [Operation]
-        self.number_of_carts = 0
+        self.id_carts = 0
 
-        self.products = []  # the queue with all available products
+        self.products = list()  # the queue with all available products
         self.producers = {}  # Product --> Producer
 
         self.lock_for_sizes = Lock()  # for changing the size of a producer's queue
         self.lock_for_carts = Lock()  # for changing the number of carts
-        self.lock_for_register = Lock()  # for atomic registration of a producer
+        # self.lock_for_register = Lock()  # for atomic registration of a producer
         self.lock_for_print = Lock()  # for not interleaving the prints
         # pass
 
@@ -39,11 +41,10 @@ class Marketplace:
         """
         Returns an id for the producer that calls this.
         """
-        with self.lock_for_register:
-            producer_id = len(self.sizes_per_producer)
+
+        self.id_producer = self.id_producer + 1
         self.sizes_per_producer.append(0)
-        return producer_id
-        # pass
+        return self.id_producer - 1
 
     def publish(self, producer_id, product):
         """
@@ -57,21 +58,14 @@ class Marketplace:
 
         :returns True or False. If the caller receives False, it should wait and then try again.
         """
-        num_prod_id = int(producer_id)
 
-        max_size = self.queue_size_per_producer
-        crt_size = self.sizes_per_producer[num_prod_id]
+        if self.sizes_per_producer[int(producer_id)] < self.queue_size_per_producer:
+            self.sizes_per_producer[int(producer_id)] += 1
+            self.products.append(product)
+            self.producers[product] = int(producer_id)
+            return True
 
-        if crt_size >= max_size:
-            return False
-
-        with self.lock_for_sizes:
-            self.sizes_per_producer[num_prod_id] += 1
-        self.products.append(product)
-        self.producers[product] = num_prod_id
-
-        return True
-        # pass
+        return False
 
     def new_cart(self):
         """
@@ -79,16 +73,13 @@ class Marketplace:
 
         :returns an int representing the cart_id
         """
-        ret_id = 0
-        with self.lock_for_carts:
-            self.number_of_carts += 1
-            ret_id = self.number_of_carts
+        self.lock_for_carts.acquire()
+        self.id_carts = self.id_carts + 1
+        self.lock_for_carts.release()
 
-        self.carts[ret_id] = []
+        self.carts[self.id_carts] = list()
 
-        return ret_id
-
-        # pass
+        return self.id_carts
 
     def add_to_cart(self, cart_id, product):
         """
@@ -102,18 +93,16 @@ class Marketplace:
 
         :returns True or False. If the caller receives False, it should wait and then try again
         """
+		# TODO from here to modify
         with self.lock_for_sizes:
-            if product not in self.products:
-                return False
+            if product in self.products:
+                self.products.remove(product)
+                producer = self.producers[product]
+                self.sizes_per_producer[producer] -= 1
+                self.carts[cart_id].append(product)
+                return True
 
-            self.products.remove(product)
-
-            producer = self.producers[product]
-            self.sizes_per_producer[producer] -= 1
-
-        self.carts[cart_id].append(product)
-        return True
-        # pass
+        return False
 
     def remove_from_cart(self, cart_id, product):
         """
