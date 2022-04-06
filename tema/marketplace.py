@@ -33,9 +33,7 @@ class Marketplace:
 
         self.lock_for_sizes = Lock()  # for changing the size of a producer's queue
         self.lock_for_carts = Lock()  # for changing the number of carts
-        # self.lock_for_register = Lock()  # for atomic registration of a producer
         self.lock_for_print = Lock()  # for not interleaving the prints
-        # pass
 
     def register_producer(self):
         """
@@ -93,7 +91,7 @@ class Marketplace:
 
         :returns True or False. If the caller receives False, it should wait and then try again
         """
-		# TODO from here to modify
+		# TODO modify this
         with self.lock_for_sizes:
             if product in self.products:
                 self.products.remove(product)
@@ -101,6 +99,7 @@ class Marketplace:
                 self.sizes_per_producer[producer] -= 1
                 self.carts[cart_id].append(product)
                 return True
+
 
         return False
 
@@ -114,14 +113,15 @@ class Marketplace:
         :type product: Product
         :param product: the product to remove from cart
         """
-        self.carts[cart_id].remove(product)
+        if product in self.carts[cart_id]:
+            self.carts[cart_id].remove(product)
 
-        with self.lock_for_sizes:
+            self.lock_for_sizes.acquire()
             producer = self.producers[product]
             self.sizes_per_producer[producer] += 1
+            self.lock_for_sizes.release()
 
-        self.products.append(product)
-        # pass
+            self.products.append(product)
 
     def place_order(self, cart_id):
         """
@@ -130,12 +130,9 @@ class Marketplace:
         :type cart_id: Int
         :param cart_id: id cart
         """
-        product_list = self.carts.pop(cart_id, None)
 
-        for prod in product_list:
-            with self.lock_for_print:
-                print(str(currentThread().getName()) + " bought " + str(prod))
-
-        return product_list
-
-        # pass
+        for cart in self.carts[cart_id]:
+            self.lock_for_print.acquire()
+            print(str(currentThread().getName()) + " bought " + str(cart))
+            self.lock_for_print.release()
+        return self.carts[cart_id]
