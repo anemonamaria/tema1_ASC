@@ -36,10 +36,8 @@ class Consumer(Thread):
         self.carts = carts
         self.marketplace = marketplace
         self.retry_wait_time = retry_wait_time
-        # pass
 
     def run(self):
-        # pass
         for crt_cart in self.carts:
             cart_id = self.marketplace.new_cart()
 
@@ -50,7 +48,6 @@ class Consumer(Thread):
 
                     op_product = crt_operation["product"]
 
-                    # Execute the current operation
                     if crt_operation["type"] == "add":
                         return_code = self.marketplace.add_to_cart(cart_id, op_product)
                     elif crt_operation["type"] == "remove":
@@ -61,5 +58,4 @@ class Consumer(Thread):
                     else:
                         time.sleep(self.retry_wait_time)
 
-            # Place the order with all the products from the current cart
             self.marketplace.place_order(cart_id)

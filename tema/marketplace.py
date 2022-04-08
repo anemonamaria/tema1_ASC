@@ -7,6 +7,7 @@ March 2021
 """
 
 from threading import Lock, currentThread
+import threading
 
 class Marketplace:
     """
@@ -20,20 +21,20 @@ class Marketplace:
         :type queue_size_per_producer: Int
         :param queue_size_per_producer: the maximum size of a queue associated with each producer
         """
-		# TODO change these types
         self.queue_size_per_producer = queue_size_per_producer
         self.id_producer = 0
-        self.sizes_per_producer = list()  # How many items a producer has in the queue
+        self.producer_capacity = {}
 
-        self.carts = {}  # Cart ID (Int) --> [Operation]
+        self.products = list()
+        self.producers = {}
+
+        self.carts = {}
         self.id_carts = 0
 
-        self.products = list()  # the queue with all available products
-        self.producers = {}  # Product --> Producer
-
-        self.lock_for_sizes = Lock()  # for changing the size of a producer's queue
-        self.lock_for_carts = Lock()  # for changing the number of carts
-        self.lock_for_print = Lock()  # for not interleaving the prints
+        self.mutex_qsize = threading.Lock()
+        self.mutex_addcart = threading.Lock()
+        self.mutex_cart = threading.Lock()
+        self.mutex_printing = threading.Lock()
 
     def register_producer(self):
         """
@@ -41,7 +42,7 @@ class Marketplace:
         """
 
         self.id_producer = self.id_producer + 1
-        self.sizes_per_producer.append(0)
+        self.producer_capacity[self.id_producer - 1] = 0
         return self.id_producer - 1
 
     def publish(self, producer_id, product):
@@ -57,8 +58,8 @@ class Marketplace:
         :returns True or False. If the caller receives False, it should wait and then try again.
         """
 
-        if self.sizes_per_producer[int(producer_id)] < self.queue_size_per_producer:
-            self.sizes_per_producer[int(producer_id)] += 1
+        if self.producer_capacity[int(producer_id)] < self.queue_size_per_producer:
+            self.producer_capacity[int(producer_id)] += 1
             self.products.append(product)
             self.producers[product] = int(producer_id)
             return True
@@ -71,9 +72,9 @@ class Marketplace:
 
         :returns an int representing the cart_id
         """
-        self.lock_for_carts.acquire()
+        self.mutex_cart.acquire()
         self.id_carts = self.id_carts + 1
-        self.lock_for_carts.release()
+        self.mutex_cart.release()
 
         self.carts[self.id_carts] = list()
 
@@ -91,15 +92,14 @@ class Marketplace:
 
         :returns True or False. If the caller receives False, it should wait and then try again
         """
-		# TODO modify this
-        with self.lock_for_sizes:
+        mutex = threading.Lock()
+        with self.mutex_addcart:
             if product in self.products:
+                self.carts[cart_id].append(product)
                 self.products.remove(product)
                 producer = self.producers[product]
-                self.sizes_per_producer[producer] -= 1
-                self.carts[cart_id].append(product)
+                self.producer_capacity[producer] = self.producer_capacity[producer] - 1
                 return True
-
 
         return False
 
@@ -116,12 +116,13 @@ class Marketplace:
         if product in self.carts[cart_id]:
             self.carts[cart_id].remove(product)
 
-            self.lock_for_sizes.acquire()
+            self.mutex_qsize.acquire()
             producer = self.producers[product]
-            self.sizes_per_producer[producer] += 1
-            self.lock_for_sizes.release()
-
+            self.producer_capacity[producer] = self.producer_capacity[producer] + 1
             self.products.append(product)
+            self.mutex_qsize.release()
+
+
 
     def place_order(self, cart_id):
         """
@@ -132,7 +133,7 @@ class Marketplace:
         """
 
         for cart in self.carts[cart_id]:
-            self.lock_for_print.acquire()
+            self.mutex_printing.acquire()
             print(str(currentThread().getName()) + " bought " + str(cart))
-            self.lock_for_print.release()
+            self.mutex_printing.release()
         return self.carts[cart_id]
