@@ -22,13 +22,13 @@ class Marketplace:
         :param queue_size_per_producer: the maximum size of a queue associated with each producer
         """
         self.queue_size_per_producer = queue_size_per_producer
-        self.id_producer = 0
-        self.producer_capacity = {}
+        self.id = 0
+        self.size = {}
 
-        self.products = list()
-        self.producers = {}
+        self.product_list = list()
+        self.producer_list = {}
 
-        self.carts = {}
+        self.cart_list = {}
         self.id_carts = 0
 
         self.mutex_qsize = threading.Lock()
@@ -41,9 +41,9 @@ class Marketplace:
         Returns an id for the producer that calls this.
         """
 
-        self.id_producer = self.id_producer + 1
-        self.producer_capacity[self.id_producer - 1] = 0
-        return self.id_producer - 1
+        self.id = self.id + 1
+        self.size[self.id - 1] = 0
+        return self.id - 1
 
     def publish(self, producer_id, product):
         """
@@ -58,10 +58,10 @@ class Marketplace:
         :returns True or False. If the caller receives False, it should wait and then try again.
         """
 
-        if self.producer_capacity[int(producer_id)] < self.queue_size_per_producer:
-            self.producer_capacity[int(producer_id)] += 1
-            self.products.append(product)
-            self.producers[product] = int(producer_id)
+        if self.size[int(producer_id)] < self.queue_size_per_producer:
+            self.size[int(producer_id)] += 1
+            self.product_list.append(product)
+            self.producer_list[product] = int(producer_id)
             return True
 
         return False
@@ -76,7 +76,7 @@ class Marketplace:
         self.id_carts = self.id_carts + 1
         self.mutex_cart.release()
 
-        self.carts[self.id_carts] = list()
+        self.cart_list[self.id_carts] = list()
 
         return self.id_carts
 
@@ -92,13 +92,12 @@ class Marketplace:
 
         :returns True or False. If the caller receives False, it should wait and then try again
         """
-        mutex = threading.Lock()
         with self.mutex_addcart:
-            if product in self.products:
-                self.carts[cart_id].append(product)
-                self.products.remove(product)
-                producer = self.producers[product]
-                self.producer_capacity[producer] = self.producer_capacity[producer] - 1
+            if product in self.product_list:
+                self.cart_list[cart_id].append(product)
+                self.product_list.remove(product)
+                producer = self.producer_list[product]
+                self.size[producer] = self.size[producer] - 1
                 return True
 
         return False
@@ -113,14 +112,15 @@ class Marketplace:
         :type product: Product
         :param product: the product to remove from cart
         """
-        if product in self.carts[cart_id]:
-            self.carts[cart_id].remove(product)
+        if product in self.cart_list[cart_id]:
+            self.cart_list[cart_id].remove(product)
 
             self.mutex_qsize.acquire()
-            producer = self.producers[product]
-            self.producer_capacity[producer] = self.producer_capacity[producer] + 1
-            self.products.append(product)
+            producer = self.producer_list[product]
+            self.size[producer] = self.size[producer] + 1
+            self.product_list.append(product)
             self.mutex_qsize.release()
+        return True
 
 
 
@@ -132,8 +132,8 @@ class Marketplace:
         :param cart_id: id cart
         """
 
-        for cart in self.carts[cart_id]:
+        for cart in self.cart_list[cart_id]:
             self.mutex_printing.acquire()
-            print(str(currentThread().getName()) + " bought " + str(cart))
+            print(currentThread().getName() + " bought " + str(cart))
             self.mutex_printing.release()
-        return self.carts[cart_id]
+        return self.cart_list[cart_id]

@@ -6,6 +6,7 @@ Assignment 1
 March 2021
 """
 
+from pickle import TRUE
 from threading import Thread
 import time
 
@@ -31,26 +32,19 @@ class Producer(Thread):
         @type kwargs:
         @param kwargs: other arguments that are passed to the Thread's __init__()
         """
-        Thread.__init__(self, **kwargs)
-
         self.products = products
         self.marketplace = marketplace
         self.republish_wait_time = republish_wait_time
-        self.producer_id = self.marketplace.register_producer()
-        # pass
+
+        Thread.__init__(self, **kwargs)
 
     def run(self):
-        # pass
-        while 69 - 420 < 3:
+        id = self.marketplace.register_producer()
 
-            for (product, number_of_products, product_wait_time) in self.products:
-
-                i = 0
-                while i < number_of_products:
-                    return_code = self.marketplace.publish(str(self.producer_id), product)
-
-                    if not return_code:  # failed product publishing
+        while True:
+            for (product, size, publish_wait_time) in self.products:
+                for i in range(size):
+                    if not self.marketplace.publish(str(id), product):
                         time.sleep(self.republish_wait_time)
-                    else:
-                        time.sleep(product_wait_time)
-                        i += 1
+                        break
+                    time.sleep(publish_wait_time)
