@@ -6,7 +6,6 @@ Assignment 1
 March 2021
 """
 
-from itertools import product
 from threading import Thread
 import time
 
@@ -39,30 +38,35 @@ class Consumer(Thread):
         Thread.__init__(self, **kwargs)
 
     def check_code(self, code, iteration):
-        if code is True:  # check if there is need for delay
+        """
+        check if there is need for delay
+        """
+        if code is True:
             iteration = iteration + 1
         else:
             time.sleep(self.retry_wait_time)
         return iteration
 
     def run(self):
+        """
+        generate carts for that size
+        """
         for i in range(len(self.carts)):
-            id = self.marketplace.new_cart()
-			# generate carts for that size
+            id_cart = self.marketplace.new_cart()
             for command in self.carts[i]:
-                type = command["type"]
+                my_type = command["type"]
                 quantity = command["quantity"]
-                product = command["product"]
+                my_product = command["product"]
                 iteration = 0
 				# checks what type of command we have and then we do that
-                if type == "add":
+                if my_type == "add":
                     while iteration < quantity:
-                        code = self.marketplace.add_to_cart(id, product)
+                        code = self.marketplace.add_to_cart(id_cart, my_product)
                         iteration = Consumer.check_code(self, code, iteration)
 
-                elif type == "remove":
+                elif my_type == "remove":
                     while iteration < quantity:
-                        code = self.marketplace.remove_from_cart(id, product)
+                        code = self.marketplace.remove_from_cart(id_cart, my_product)
                         iteration = Consumer.check_code(self, code, iteration)
 
-            self.marketplace.place_order(id)
+            self.marketplace.place_order(id_cart)
