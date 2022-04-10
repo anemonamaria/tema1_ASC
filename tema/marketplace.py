@@ -6,8 +6,10 @@ Assignment 1
 March 2021
 """
 
+import unittest
 from threading import currentThread
 import threading
+from tema.product import Tea
 
 class Marketplace:
     """
@@ -139,3 +141,44 @@ class Marketplace:
             print(currentThread().getName() + " bought " + str(cart))  # print the details
             self.mutex_printing.release()
         return self.cart_list[cart_id]
+
+
+class TestMarketplace(unittest.TestCase):
+
+    def setUp(self):
+        self.marketplace = Marketplace(3)
+        self.first_product = Tea("tea", 5, "hot")
+        self.list = []
+        self.list.append(self.first_product)
+
+    def test_register_producer(self):
+        self.assertEqual(self.marketplace.register_producer(), 0)
+
+    def test_publish(self):
+        self.marketplace.register_producer()
+        self.assertTrue(self.marketplace.publish("0", self.first_product))
+
+    def test_new_cart(self):
+        self.assertEqual(self.marketplace.new_cart(), 1)
+
+    def test_add_to_cart(self):
+        self.marketplace.register_producer()
+        self.marketplace.publish("0", self.first_product)
+        self.marketplace.new_cart()
+        self.assertTrue(self.marketplace.add_to_cart(1, self.first_product))
+
+    def test_remove_from_cart(self):
+        self.marketplace.register_producer()
+        self.marketplace.publish("0", self.first_product)
+        self.marketplace.new_cart()
+        self.marketplace.add_to_cart(1, self.first_product)
+        self.assertTrue(self.marketplace.remove_from_cart(1, self.first_product))
+
+    def test_place_order(self):
+        self.marketplace.register_producer()
+        self.marketplace.publish("0", self.first_product)
+        self.marketplace.new_cart()
+        self.marketplace.add_to_cart(1, self.first_product)
+
+if __name__ == '__main__':
+    unittest.main()
