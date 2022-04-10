@@ -6,7 +6,6 @@ Assignment 1
 March 2021
 """
 
-from itertools import product
 from threading import Thread
 import time
 
@@ -32,36 +31,43 @@ class Consumer(Thread):
         :type kwargs:
         :param kwargs: other arguments that are passed to the Thread's __init__()
         """
+        Thread.__init__(self, **kwargs)
+
         self.carts = carts
         self.marketplace = marketplace
         self.retry_wait_time = retry_wait_time
 
-        Thread.__init__(self, **kwargs)
-
-    def check_code(self, code, iteration):
-        if code is True:
-            iteration = iteration + 1
-        else:
-            time.sleep(self.retry_wait_time)
-        return iteration
-
     def run(self):
-        for i in range(len(self.carts)):
-            id = self.marketplace.new_cart()
+        """
+        Creates a new cart instance for each of the current consumer's carts
+        and executes every given operation.
 
-            for command in self.carts[i]:
-                type = command["type"]
-                quantity = command["quantity"]
-                product = command["product"]
-                iteration = 0
-                if type == "add":
-                    while iteration < quantity:
-                        code = self.marketplace.add_to_cart(id, product)
-                        iteration = Consumer.check_code(self, code, iteration)
+        If one operation fails, the consumer will wait for its retry_wait_time
+        until he can retry the current operation.
+        Once he finishes all his operations, he moves on to the next cart.
 
-                elif type == "remove":
-                    while iteration < quantity:
-                        code = self.marketplace.remove_from_cart(id, product)
-                        iteration = Consumer.check_code(self, code, iteration)
+        return_code = True (successful "add"), None ("remove") or False (failed "add")
+        """
+        for crt_cart in self.carts:
+            cart_id = self.marketplace.new_cart()
 
-            self.marketplace.place_order(id)
+            for crt_operation in crt_cart:
+
+                number_of_operations = 0
+                while number_of_operations < crt_operation["quantity"]:
+
+                    op_product = crt_operation["product"]
+
+                    # Execute the current operation
+                    if crt_operation["type"] == "add":
+                        return_code = self.marketplace.add_to_cart(cart_id, op_product)
+                    elif crt_operation["type"] == "remove":
+                        return_code = self.marketplace.remove_from_cart(cart_id, op_product)
+
+                    if return_code == True or return_code is None:
+                        number_of_operations += 1
+                    else:
+                        time.sleep(self.retry_wait_time)
+
+            # Place the order with all the products from the current cart
+            self.marketplace.place_order(cart_id)

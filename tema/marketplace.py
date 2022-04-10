@@ -7,13 +7,14 @@ March 2021
 """
 
 from threading import Lock, currentThread
-import threading
+
 
 class Marketplace:
     """
     Class that represents the Marketplace. It's the central part of the implementation.
     The producers and consumers use its methods concurrently.
     """
+    # pylint: disable=too-many-instance-attributes
     def __init__(self, queue_size_per_producer):
         """
         Constructor
@@ -22,67 +23,88 @@ class Marketplace:
         :param queue_size_per_producer: the maximum size of a queue associated with each producer
         """
         self.queue_size_per_producer = queue_size_per_producer
-        self.id = 0
-        self.size = {}
+        self.sizes_per_producer = [] # How many items a producer has in the queue
 
-        self.product_list = list()
-        self.producer_list = {}
+        self.carts = {} # Cart ID (Int) --> [Operation]
+        self.number_of_carts = 0
 
-        self.cart_list = {}
-        self.id_carts = 0
+        self.products = [] # the queue with all available products
+        self.producers = {} # Product --> Producer
 
-        self.mutex_qsize = threading.Lock()
-        self.mutex_addcart = threading.Lock()
-        self.mutex_cart = threading.Lock()
-        self.mutex_printing = threading.Lock()
+        self.lock_for_sizes = Lock() # for changing the size of a producer's queue
+        self.lock_for_carts = Lock() # for changing the number of carts
+        self.lock_for_register = Lock() # for atomic registration of a producer
+        self.lock_for_print = Lock() # for not interleaving the prints
 
     def register_producer(self):
         """
         Returns an id for the producer that calls this.
-        """
+        Adds a new producer with no produced items
 
-        self.id = self.id + 1
-        self.size[self.id - 1] = 0
-        return self.id - 1
+        We need to use a lock for the registration, because
+        any operation which changes the size of a list is not a thread-safe operation.
+        The length of the sizes list might be changed by another "register" thread
+        before the current thread appends 0 the list.
+        """
+        with self.lock_for_register:
+            producer_id = len(self.sizes_per_producer)
+        self.sizes_per_producer.append(0)
+        return producer_id
 
     def publish(self, producer_id, product):
         """
-        Adds the product provided by the producer to the marketplace
+        Adds the product provided by the producer to the marketplace.
+        Returns False if the current size is above the queue capacity.
+        Otherwise, return True and the product is added in the queue.
+
+        THE 'append', 'dict[key] = value' and 'x = y' operations are thread-safe.
+        The '+= 1' operation is not thread-safe, so it must be in a synchronized block.
 
         :type producer_id: String
         :param producer_id: producer id
 
         :type product: Product
         :param product: the Product that will be published in the Marketplace
-
-        :returns True or False. If the caller receives False, it should wait and then try again.
         """
 
-        if self.size[int(producer_id)] < self.queue_size_per_producer:
-            self.size[int(producer_id)] += 1
-            self.product_list.append(product)
-            self.producer_list[product] = int(producer_id)
-            return True
+        num_prod_id = int(producer_id)
 
-        return False
+        max_size = self.queue_size_per_producer
+        crt_size = self.sizes_per_producer[num_prod_id]
+
+        if crt_size >= max_size:
+            return False
+
+        with self.lock_for_sizes:
+            self.sizes_per_producer[num_prod_id] += 1
+        self.products.append(product)
+        self.producers[product] = num_prod_id
+
+        return True
 
     def new_cart(self):
         """
-        Creates a new cart for the consumer
+        Creates a new cart for the consumer.
 
         :returns an int representing the cart_id
+
+        The '+= 1' operation is not thread-safe, so we must use a specific lock.
+        We also need to include the ret_id assignent in the lock, because
+        the number of carts can be changed once more by another running thread.
         """
-        self.mutex_cart.acquire()
-        self.id_carts = self.id_carts + 1
-        self.mutex_cart.release()
+        ret_id = 0
+        with self.lock_for_carts:
+            self.number_of_carts += 1
+            ret_id = self.number_of_carts
 
-        self.cart_list[self.id_carts] = list()
+        self.carts[ret_id] = []
 
-        return self.id_carts
+        return ret_id
 
     def add_to_cart(self, cart_id, product):
         """
-        Adds a product to the given cart. The method returns
+        Adds a product to the given cart. The method returns.
+        Removes the respective product from the list of available products
 
         :type cart_id: Int
         :param cart_id: id cart
@@ -90,50 +112,60 @@ class Marketplace:
         :type product: Product
         :param product: the product to add to cart
 
-        :returns True or False. If the caller receives False, it should wait and then try again
-        """
-        with self.mutex_addcart:
-            if product in self.product_list:
-                self.cart_list[cart_id].append(product)
-                self.product_list.remove(product)
-                producer = self.producer_list[product]
-                self.size[producer] = self.size[producer] - 1
-                return True
+        :returns True or False.
+        If the caller receives False, it should wait and then try again
 
-        return False
+        In order not to have more consumers take the same product,
+        we need a size-exclusive lock for the non-thread-safe size increment.
+        """
+        with self.lock_for_sizes:
+            if product not in self.products:
+                return False
+
+            self.products.remove(product)
+
+            producer = self.producers[product]
+            self.sizes_per_producer[producer] -= 1
+
+        self.carts[cart_id].append(product)
+        return True
 
     def remove_from_cart(self, cart_id, product):
         """
         Removes a product from cart.
+        Adds the respective product back to the list of available products.
 
         :type cart_id: Int
         :param cart_id: id cart
 
         :type product: Product
         :param product: the product to remove from cart
+
+        In order not to have more consumers remove the same product from their carts,
+        we need a size-exclusive lock for the non-thread-safe size increment.
         """
-        if product in self.cart_list[cart_id]:
-            self.cart_list[cart_id].remove(product)
+        self.carts[cart_id].remove(product)
 
-            self.mutex_qsize.acquire()
-            producer = self.producer_list[product]
-            self.size[producer] = self.size[producer] + 1
-            self.product_list.append(product)
-            self.mutex_qsize.release()
-        return True
+        with self.lock_for_sizes:
+            producer = self.producers[product]
+            self.sizes_per_producer[producer] += 1
 
-
+        self.products.append(product)
 
     def place_order(self, cart_id):
         """
         Return a list with all the products in the cart.
+        Prints the contents of the cart with a lock,
+        so that the program doesn't interleave the output strings.
 
         :type cart_id: Int
         :param cart_id: id cart
         """
 
-        for cart in self.cart_list[cart_id]:
-            self.mutex_printing.acquire()
-            print(currentThread().getName() + " bought " + str(cart))
-            self.mutex_printing.release()
-        return self.cart_list[cart_id]
+        product_list = self.carts.pop(cart_id, None)
+
+        for prod in product_list:
+            with self.lock_for_print:
+                print(str(currentThread().getName()) + " bought " + str(prod))
+
+        return product_list
