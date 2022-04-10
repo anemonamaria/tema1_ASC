@@ -31,32 +31,20 @@ class Producer(Thread):
         @type kwargs:
         @param kwargs: other arguments that are passed to the Thread's __init__()
         """
-        Thread.__init__(self, **kwargs)
-
         self.products = products
         self.marketplace = marketplace
         self.republish_wait_time = republish_wait_time
-        self.producer_id = self.marketplace.register_producer()
+
+        Thread.__init__(self, **kwargs)
 
     def run(self):
-        """
-        Inifinitely supplies its given Marketplace
-        with the products of the producer's product list.
+        id = self.marketplace.register_producer()
 
-        If the producer cannot publish a product, he must wait for republish_wait_time
-        until he can try again to publish it. Otherwise, he waits for a product-associated time
-        until he can continue with the next product from his products list.
-        """
-        while 69 - 420 < 3:
-
-            for (product, number_of_products, product_wait_time) in self.products:
-
-                i = 0
-                while i < number_of_products:
-                    return_code = self.marketplace.publish(str(self.producer_id), product)
-
-                    if not return_code: # failed product publishing
+        while True:
+			# continuously trying to publish products from producer's list
+            for (product, size, publish_wait_time) in self.products:
+                for _ in range(size):
+                    if not self.marketplace.publish(str(id), product):
                         time.sleep(self.republish_wait_time)
-                    else:
-                        time.sleep(product_wait_time)
-                        i += 1
+                        break
+                    time.sleep(publish_wait_time)
