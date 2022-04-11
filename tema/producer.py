@@ -34,17 +34,17 @@ class Producer(Thread):
         self.products = products
         self.marketplace = marketplace
         self.republish_wait_time = republish_wait_time
+        self.id_producer = self.marketplace.register_producer()
 
         Thread.__init__(self, **kwargs)
 
     def run(self):
-        id_producer = self.marketplace.register_producer()
 
         while True:
 			# continuously trying to publish products from producer's list
-            for (product, size, publish_wait_time) in self.products:
+            for product, size, publish_wait_time in self.products:
                 for _ in range(size):
-                    if not self.marketplace.publish(str(id_producer), product):
+                    if not self.marketplace.publish(str(self.id_producer), product):
                         time.sleep(self.republish_wait_time)
                         break
                     time.sleep(publish_wait_time)

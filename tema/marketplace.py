@@ -45,7 +45,8 @@ class Marketplace:
         formatter = logging.Formatter('%(asctime)s %(levelname)8s: %(message)s')
         self.log = logging.basicConfig(filename='marketplace.log', level=logging.INFO)
         self.log = logging.getLogger('marketplace.log')
-        my_handler = logging.handlers.RotatingFileHandler('marketplace.log', maxBytes=50000, backupCount=10)
+        my_handler = logging.handlers.RotatingFileHandler('marketplace.log',
+			maxBytes=50000, backupCount=10)
         my_handler.setFormatter(formatter)
         self.log.addHandler(my_handler)
 
@@ -144,10 +145,10 @@ class Marketplace:
 
         if self.cart_list[cart_id] is not None:  # check if the cart is valid
             if product in self.cart_list[cart_id]:  # check if the product is in the cart
-                self.cart_list[cart_id].remove(product)  # remove it from the cart
 
-                self.mutex_qsize.acquire()  # and add it back tp the products list
-                producer = self.producer_list[product]
+                self.mutex_qsize.acquire()
+                self.cart_list[cart_id].remove(product)  # remove it from the cart
+                producer = self.producer_list[product]  # add it back tp the products list
                 self.size[producer] = self.size[producer] + 1
                 self.product_list.append(product)
                 self.mutex_qsize.release()
